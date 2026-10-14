@@ -1035,16 +1035,36 @@ jobs:
           done
           if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
             echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-            for i in vllm decode; do
-              find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/" -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
-              find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/" -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
+            find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/" -type f \( -name "*.yaml" -o -name "*.yml" \) -print0 | \
+            while IFS= read -r -d '' manifest; do
+              kind=$(yq -r 'select(documentIndex == 0) | .kind // ""' "$manifest" 2>/dev/null || echo "")
+              base=$(basename "$manifest")
+              if [[ "$kind" == "DisaggregatedSet" ]]; then
+                if [[ "$base" == "patch-decode.yaml" ]] || yq -e '.spec.roles[] | select(.name == "decode" and .spec.replicas != null)' "$manifest" >/dev/null 2>&1; then
+                  REPLICAS="$LLMDBENCH_CICD_DECODE_PODS" yq -i '(.spec.roles[] | select(.name == "decode") | .spec.replicas) = (env(REPLICAS) | tonumber)' "$manifest"
+                  echo -n "$manifest ($kind, decode): "; yq '.spec.roles[] | select(.name == "decode") | .spec.replicas' "$manifest"
+                fi
+              elif [[ "$base" == "patch-vllm.yaml" || "$base" == "patch-decode.yaml" ]]; then
+                REPLICAS="$LLMDBENCH_CICD_DECODE_PODS" yq -i '.spec.replicas = (env(REPLICAS) | tonumber)' "$manifest"
+                echo -n "$manifest ($kind): "; yq '.spec.replicas' "$manifest"
+              fi
             done
           fi
           if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
             echo "### Setting prefill pods to \"$LLMDBENCH_CICD_PREFILL_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-            for i in prefill; do
-              find "$LLMDBENCH_CICD_KUSTOMIZE_PATH" -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_PREFILL_PODS" -i {} \;
-              find "$LLMDBENCH_CICD_KUSTOMIZE_PATH" -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
+            find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/" -type f \( -name "*.yaml" -o -name "*.yml" \) -print0 | \
+            while IFS= read -r -d '' manifest; do
+              kind=$(yq -r 'select(documentIndex == 0) | .kind // ""' "$manifest" 2>/dev/null || echo "")
+              base=$(basename "$manifest")
+              if [[ "$kind" == "DisaggregatedSet" ]]; then
+                if [[ "$base" == "patch-prefill.yaml" ]] || yq -e '.spec.roles[] | select(.name == "prefill" and .spec.replicas != null)' "$manifest" >/dev/null 2>&1; then
+                  REPLICAS="$LLMDBENCH_CICD_PREFILL_PODS" yq -i '(.spec.roles[] | select(.name == "prefill") | .spec.replicas) = (env(REPLICAS) | tonumber)' "$manifest"
+                  echo -n "$manifest ($kind, prefill): "; yq '.spec.roles[] | select(.name == "prefill") | .spec.replicas' "$manifest"
+                fi
+              elif [[ "$base" == "patch-prefill.yaml" ]]; then
+                REPLICAS="$LLMDBENCH_CICD_PREFILL_PODS" yq -i '.spec.replicas = (env(REPLICAS) | tonumber)' "$manifest"
+                echo -n "$manifest ($kind): "; yq '.spec.replicas' "$manifest"
+              fi
             done
           fi
         shell: bash
