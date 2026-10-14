@@ -1020,6 +1020,14 @@ jobs:
                   echo -n "$manifest ($kind, leaderTemplate): "; yq '.spec.leaderWorkerTemplate.leaderTemplate.spec.priorityClassName' "$manifest"
                 fi
                 ;;
+              DisaggregatedSet)
+                # Each role (prefill/decode) embeds a LeaderWorkerSet-style leaderWorkerTemplate.
+                # Only touch templates that already exist, for the same reason as LeaderWorkerSet above
+                # (and so a patch carrying a role without a template doesn't grow one).
+                PC="$LLMDBENCH_CICD_PRIORITY_CLASS" yq -i '(.spec.roles[] | select(.spec.leaderWorkerTemplate.workerTemplate != null) | .spec.leaderWorkerTemplate.workerTemplate.spec.priorityClassName) = env(PC)' "$manifest"
+                PC="$LLMDBENCH_CICD_PRIORITY_CLASS" yq -i '(.spec.roles[] | select(.spec.leaderWorkerTemplate.leaderTemplate != null) | .spec.leaderWorkerTemplate.leaderTemplate.spec.priorityClassName) = env(PC)' "$manifest"
+                echo "$manifest ($kind):"; yq -r '.spec.roles[] | "  " + .name + ": worker=" + (.spec.leaderWorkerTemplate.workerTemplate.spec.priorityClassName // "<none>") + " leader=" + (.spec.leaderWorkerTemplate.leaderTemplate.spec.priorityClassName // "<none>")' "$manifest"
+                ;;
               *)
                 continue
                 ;;
